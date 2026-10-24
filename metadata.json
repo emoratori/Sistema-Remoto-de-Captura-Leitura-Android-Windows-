@@ -1,0 +1,7 @@
+{
+  "name": "Sistema Remoto de Captura & Leitura (Android-Windows)",
+  "description": "Análise técnica aprofundada e implementação do sistema local de captura de tela de laptop via Android com controle remoto Windows, foco e OCR.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
