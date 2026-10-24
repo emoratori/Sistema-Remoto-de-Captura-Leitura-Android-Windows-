@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+# Backend Node.js (pasta server)
+server/node_modules/
+server/Storage/
+server/cert.key
+server/cert.crt
