@@ -36,7 +36,7 @@ export default function App() {
     }
     return '192.168.15.101';
   });
-  const [isAndroidOnline, setIsAndroidOnline] = useState<boolean>(true);
+  const [isAndroidOnline, setIsAndroidOnline] = useState<boolean>(false);
 
   // Check if opened directly via #android on mobile
   const isStandaloneAndroid = typeof window !== 'undefined' && (window.location.hash === '#android' || window.location.search.includes('mode=android'));
@@ -52,18 +52,33 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
-  // Monitor Android online status via localBus
+  // Monitor REAL Android online status via localBus and server telemetry
   useEffect(() => {
+    let lastSeen = 0;
+
     const unsub = localBus.subscribe((msg) => {
-      if (msg.type === 'ANDROID_STATUS' || msg.type === 'PONG') {
-        setIsAndroidOnline(true);
+      if (msg.type === 'ANDROID_STATUS') {
+        const isOnline = Boolean(msg.payload?.online);
+        setIsAndroidOnline(isOnline);
+        if (isOnline) lastSeen = Date.now();
+      } else if (msg.type === 'SERVER_TELEMETRY') {
+        const isOnline = Boolean(msg.payload?.androidOnline);
+        setIsAndroidOnline(isOnline);
+        if (isOnline) lastSeen = Date.now();
       }
     });
 
-    // Initial ping
-    localBus.send('PING', { source: 'app_root' });
+    // Watchdog check every 3s: if no heartbeat in 8s, mark as offline
+    const interval = setInterval(() => {
+      if (lastSeen > 0 && Date.now() - lastSeen > 8000) {
+        setIsAndroidOnline(false);
+      }
+    }, 3000);
 
-    return () => unsub();
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, []);
 
   if (isStandaloneAndroid) {

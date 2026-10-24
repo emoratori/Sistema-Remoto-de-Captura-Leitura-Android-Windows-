@@ -184,17 +184,32 @@ export default function AndroidView({ serverIp }: AndroidViewProps) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
+        const fname = `CAPT_${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours()}${now.getMinutes()}${now.getSeconds()}.jpg`;
         const photo: CapturedPhoto = {
           id: `photo-${Date.now()}`,
           url: dataUrl,
           timestamp: timeStr,
-          filename: `CAPT_${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours()}${now.getMinutes()}${now.getSeconds()}.jpg`,
+          filename: fname,
           width,
           height,
           sizeBytes: photoBlob?.size || 0,
           focusDistance: targetFocusDistance || 0.28,
         };
-        // Notify Windows and save locally
+
+        // 1. Upload directly to Node server disk storage
+        fetch('/api/upload-photo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageBase64: dataUrl,
+            filename: fname,
+            width,
+            height,
+            focusDistance: targetFocusDistance || 0.28,
+          }),
+        }).catch((err) => console.warn('Falha no upload para o servidor:', err));
+
+        // 2. Notify Windows via localBus / WebSocket
         localBus.send('PHOTO_READY', photo);
       };
       reader.readAsDataURL(photoBlob);

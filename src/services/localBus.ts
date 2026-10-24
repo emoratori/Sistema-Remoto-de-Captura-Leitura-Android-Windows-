@@ -69,14 +69,26 @@ class LocalMessageBus {
     const host = preferredIp || window.location.hostname;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const port = window.location.port ? `:${window.location.port}` : '';
-    const wsUrl = `${protocol}//${host}${port}`;
+    const wsUrl = `${protocol}//${host}${port}/ws`;
 
     this.connectWebSocket(wsUrl);
 
-    // Heartbeat ping every 4 seconds to maintain connection and announce presence
-    setInterval(() => {
-      this.send('PING', { client: 'heartbeat' });
-    }, 4000);
+    // Periodically fetch server status as a fallback and ground truth
+    setInterval(async () => {
+      try {
+        const res = await fetch('/api/status');
+        if (res.ok) {
+          const data = await res.json();
+          this.notifyListeners({
+            type: 'ANDROID_STATUS',
+            payload: { online: Boolean(data.androidConnected), serverStats: data },
+            timestamp: Date.now(),
+          });
+        }
+      } catch {
+        // server might not be running REST yet
+      }
+    }, 3000);
   }
 
   public connectWebSocket(serverUrl: string, onStatusChange?: (connected: boolean) => void) {
@@ -88,10 +100,31 @@ class LocalMessageBus {
       const wsUrl = serverUrl.replace(/^http/, 'ws');
       this.ws = new WebSocket(wsUrl);
 
+      const isAndroidClient = typeof window !== 'undefined' && (
+        window.location.hash === '#android' || window.location.search.includes('android')
+      );
+
       this.ws.onopen = () => {
         this.isConnectedToWs = true;
         if (onStatusChange) onStatusChange(true);
-        this.send('PING', { client: 'webapp' });
+
+        // Register role on server
+        this.send('REGISTER', {
+          device: isAndroidClient ? 'android' : 'windows',
+        });
+
+        // Android heartbeat loop
+        if (isAndroidClient) {
+          setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+              this.ws.send(JSON.stringify({
+                type: 'HEARTBEAT',
+                payload: { device: 'android' },
+                timestamp: Date.now(),
+              }));
+            }
+          }, 2500);
+        }
       };
 
       this.ws.onmessage = (evt) => {

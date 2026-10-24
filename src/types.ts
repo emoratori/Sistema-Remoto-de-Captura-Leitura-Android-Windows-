@@ -46,6 +46,9 @@ export interface AppSyncMessage {
     | 'SET_FOCUS' 
     | 'AUTO_FOCUS' 
     | 'ANDROID_STATUS' 
+    | 'SERVER_TELEMETRY'
+    | 'REGISTER'
+    | 'HEARTBEAT'
     | 'PING' 
     | 'PONG';
   payload?: any;

@@ -344,22 +344,26 @@ export default function WindowsController({
             <span>Conectar Android (QR Code)</span>
           </button>
 
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
+            isAndroidOnline
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-red-50 border-red-200 text-red-700'
+          }`}>
             {isAndroidOnline ? (
               <>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-medium text-slate-700">Android Online</span>
-                <span className="text-[11px] text-slate-400">· Redmi Note 10S</span>
+                <span className="text-xs font-bold">Android Conectado</span>
+                <span className="text-[11px] text-emerald-600">· Redmi Note 10S</span>
               </>
             ) : (
               <>
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span className="text-xs font-medium text-slate-700">Android em Standby</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                <span className="text-xs font-semibold">Android Desconectado</span>
                 <button
-                  onClick={onSwitchToAndroidTab}
-                  className="text-[11px] text-indigo-600 font-semibold underline hover:text-indigo-800"
+                  onClick={() => setShowQrModal(true)}
+                  className="text-[11px] text-indigo-700 font-bold underline hover:text-indigo-900 ml-1"
                 >
-                  Abrir Tela do Celular
+                  Conectar agora
                 </button>
               </>
             )}
