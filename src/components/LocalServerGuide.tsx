@@ -229,6 +229,22 @@ server.listen(PORT, '0.0.0.0', () => {
         </div>
       </div>
 
+      {/* Troubleshooting card */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs space-y-2 text-amber-900">
+        <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+          <ShieldCheck className="w-4 h-4 text-amber-600" />
+          Resolução de Erro no "npm install" (ERESOLVE / esbuild conflict)
+        </div>
+        <p className="leading-relaxed">
+          Se você baixou o projeto completo e teve o erro <code className="bg-white px-1 py-0.5 rounded border border-amber-300 font-mono text-amber-950">ERESOLVE could not resolve peerOptional esbuild</code>, isso ocorre porque o <strong>Vite 8</strong> requer <strong>esbuild 0.28.x</strong>.
+        </p>
+        <div className="space-y-1 pl-2">
+          <div>• <strong>Solução Rápida:</strong> Execute <code className="bg-slate-900 text-emerald-400 px-2 py-0.5 rounded font-mono">npm install --legacy-peer-deps</code></div>
+          <div>• <strong>Solução Definitiva no package.json:</strong> No seu <code className="font-mono">package.json</code>, altere <code className="font-mono">"esbuild": "^0.25.0"</code> para <code className="font-mono">"esbuild": "^0.28.2"</code> e execute <code className="font-mono">npm install</code> novamente.</div>
+          <div>• <strong>Para o Servidor Local apenas:</strong> Lembre-se que o <code className="font-mono">server.js</code> não precisa do Vite! Em uma pasta separada, instale apenas: <code className="bg-slate-900 text-emerald-400 px-2 py-0.5 rounded font-mono">npm install express ws multer cors</code>.</div>
+        </div>
+      </div>
+
       {/* Code Blocks */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between">

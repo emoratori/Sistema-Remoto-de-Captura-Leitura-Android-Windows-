@@ -19,9 +19,38 @@ import CameraTestBench from './components/CameraTestBench';
 import { localBus } from './services/localBus';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'analysis' | 'windows' | 'android' | 'testbench' | 'server'>('analysis');
-  const [serverIp, setServerIp] = useState<string>('192.168.1.100');
+  const [activeTab, setActiveTab] = useState<'analysis' | 'windows' | 'android' | 'testbench' | 'server'>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      if (hash === '#android' || search.includes('android')) {
+        return 'android';
+      }
+    }
+    return 'windows';
+  });
+
+  const [serverIp, setServerIp] = useState<string>(() => {
+    if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost') {
+      return window.location.hostname;
+    }
+    return '192.168.15.101';
+  });
   const [isAndroidOnline, setIsAndroidOnline] = useState<boolean>(true);
+
+  // Check if opened directly via #android on mobile
+  const isStandaloneAndroid = typeof window !== 'undefined' && (window.location.hash === '#android' || window.location.search.includes('mode=android'));
+
+  // Listen to hash changes in real time
+  useEffect(() => {
+    const handleHash = () => {
+      if (window.location.hash === '#android') {
+        setActiveTab('android');
+      }
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
 
   // Monitor Android online status via localBus
   useEffect(() => {
@@ -36,6 +65,14 @@ export default function App() {
 
     return () => unsub();
   }, []);
+
+  if (isStandaloneAndroid) {
+    return (
+      <div className="fixed inset-0 w-full h-full bg-black overflow-hidden flex flex-col z-50">
+        <AndroidView serverIp={serverIp} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-900 font-sans antialiased flex flex-col">

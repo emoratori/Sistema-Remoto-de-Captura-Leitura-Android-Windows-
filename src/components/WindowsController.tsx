@@ -21,8 +21,11 @@ import {
   Download,
   AlertCircle,
   Clock,
-  Info
+  Info,
+  QrCode,
+  X
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { CapturedPhoto, SelectionRect, CameraCapabilities } from '../types';
 import { localBus, getSavedPhotos, savePhoto } from '../services/localBus';
 import { runEnglishOcr, OcrResult } from '../services/tesseractOcr';
@@ -87,6 +90,29 @@ export default function WindowsController({
   const [copied, setCopied] = useState<boolean>(false);
   const [useAntiMoire, setUseAntiMoire] = useState<boolean>(true);
   const [useOtsu, setUseOtsu] = useState<boolean>(true);
+
+  // QR Code Modal for Android Setup
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+
+  // Compute exact URL to access Android view
+  const androidUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${serverIp || window.location.hostname}${window.location.port ? ':' + window.location.port : ''}/#android`
+    : `https://${serverIp}:3000/#android`;
+
+  useEffect(() => {
+    QRCode.toDataURL(androidUrl, {
+      width: 256,
+      margin: 1.5,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff',
+      },
+    })
+      .then(setQrDataUrl)
+      .catch((err) => console.warn('QR code gen error:', err));
+  }, [androidUrl]);
 
   // Load photos on mount or populate with realistic sample
   useEffect(() => {
@@ -308,9 +334,17 @@ export default function WindowsController({
           </div>
         </div>
 
-        {/* Android Device Status */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+        {/* Android Device Status & QR Connection */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowQrModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold transition-all shadow-xs"
+          >
+            <QrCode className="w-4 h-4 text-indigo-600" />
+            <span>Conectar Android (QR Code)</span>
+          </button>
+
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
             {isAndroidOnline ? (
               <>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -346,6 +380,91 @@ export default function WindowsController({
           </button>
         </div>
       </div>
+
+      {/* QR Code & Mobile Pairing Instructions Modal */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Como Acessar no Android (Redmi Note 10S)</h3>
+                  <p className="text-xs text-slate-500">Escaneie o QR Code ou digite a URL no Chrome do celular</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-5 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt="QR Code para Android"
+                  className="w-44 h-44 rounded-lg bg-white p-2 border border-slate-200 shadow-xs"
+                />
+              ) : (
+                <div className="w-44 h-44 bg-slate-200 rounded-lg animate-pulse" />
+              )}
+
+              <div className="flex-1 space-y-2 text-xs">
+                <span className="font-semibold text-slate-800">URL Direta para o Celular:</span>
+                <div className="p-2 bg-white rounded border border-slate-200 font-mono text-emerald-700 break-all select-all text-[11px]">
+                  {androidUrl}
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(androidUrl);
+                    setCopiedUrl(true);
+                    setTimeout(() => setCopiedUrl(false), 2000);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800"
+                >
+                  {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedUrl ? 'Link Copiado!' : 'Copiar Endereço'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-600">
+              <div className="font-bold text-slate-800">Passo a Passo no Android:</div>
+              <ol className="list-decimal pl-4 space-y-1.5">
+                <li>
+                  <strong>Wi-Fi:</strong> Certifique-se de que o Redmi Note 10S está conectado no mesmo Wi-Fi do computador (<code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-800">192.168.15.x</code>).
+                </li>
+                <li>
+                  <strong>Abrir no Chrome:</strong> Aponte a câmera do celular para o QR Code acima ou abra o Chrome e digite a URL.
+                </li>
+                <li>
+                  <strong>Aviso de Certificado:</strong> Na tela "Sua conexão não é particular", toque em <strong>"Avançado"</strong> e depois em <strong>"Continuar para {serverIp} (não seguro)"</strong>.
+                </li>
+                <li>
+                  <strong>Permissão de Câmera:</strong> Quando o Chrome pedir autorização, toque em <strong>"Permitir"</strong>.
+                </li>
+                <li>
+                  <strong>Pronto!</strong> A tela ficará toda preta com o texto do Windows, o Wake Lock manterá a tela ligada e você poderá controlar tudo aqui pelo Windows.
+                </li>
+              </ol>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800"
+              >
+                Entendido, Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Column: High-Res Photo Viewer (Section 6.4) */}
       <div className="lg:col-span-8 space-y-4">

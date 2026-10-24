@@ -293,6 +293,35 @@ export default function AndroidView({ serverIp }: AndroidViewProps) {
         <div className="absolute inset-0 bg-white/30 z-50 pointer-events-none transition-opacity duration-150" />
       )}
 
+      {/* Initial One-Touch Setup Overlay (Section 5.2) */}
+      {!cameraActive && (
+        <div className="absolute inset-0 bg-black/95 flex flex-col items-center justify-center p-6 text-center z-40">
+          <div className="max-w-md space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center mx-auto text-emerald-400">
+              <Camera className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold text-neutral-200">Setup Inicial do Redmi Note 10S</h2>
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              Toque no botão abaixo para autorizar a <strong>Câmera Traseira</strong> e ativar a <strong>Trava de Tela (Wake Lock)</strong>. Depois disso, nenhuma interação adicional na tela do celular será necessária por horas.
+            </p>
+            <button
+              onClick={() => {
+                startCamera();
+                requestWakeLock();
+              }}
+              className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-900/30 transition-transform active:scale-95"
+            >
+              Toque para Iniciar Câmera & Wake Lock
+            </button>
+            {cameraError && (
+              <p className="text-[11px] text-amber-500 bg-neutral-900 p-2 rounded border border-neutral-800">
+                Aviso: {cameraError}. Toque no botão acima para permitir o acesso.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Top Status Bar (Discreet, section 5.4: "Indicadores discretos apenas para conexão, erro ou status essencial") */}
       <div className="flex items-center justify-between text-[11px] text-[#444444] font-mono tracking-wider">
         <div className="flex items-center gap-3">

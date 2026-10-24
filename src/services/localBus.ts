@@ -63,10 +63,25 @@ class LocalMessageBus {
     }
   }
 
+  public initAutoConnect(preferredIp?: string) {
+    if (typeof window === 'undefined') return;
+
+    const host = preferredIp || window.location.hostname;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const port = window.location.port ? `:${window.location.port}` : '';
+    const wsUrl = `${protocol}//${host}${port}`;
+
+    this.connectWebSocket(wsUrl);
+
+    // Heartbeat ping every 4 seconds to maintain connection and announce presence
+    setInterval(() => {
+      this.send('PING', { client: 'heartbeat' });
+    }, 4000);
+  }
+
   public connectWebSocket(serverUrl: string, onStatusChange?: (connected: boolean) => void) {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
     }
 
     try {
@@ -96,15 +111,31 @@ class LocalMessageBus {
       this.ws.onclose = () => {
         this.isConnectedToWs = false;
         if (onStatusChange) onStatusChange(false);
+        // Retry connection after 3s
+        setTimeout(() => {
+          if (!this.isConnectedToWs) {
+            this.connectWebSocket(serverUrl, onStatusChange);
+          }
+        }, 3000);
       };
     } catch (e) {
-      console.warn('Failed to connect to local WS:', e);
+      this.isConnectedToWs = false;
       if (onStatusChange) onStatusChange(false);
+      setTimeout(() => {
+        if (!this.isConnectedToWs) {
+          this.connectWebSocket(serverUrl, onStatusChange);
+        }
+      }, 4000);
     }
   }
 }
 
 export const localBus = new LocalMessageBus();
+
+// Auto-initialize connection in browser environment
+if (typeof window !== 'undefined') {
+  localBus.initAutoConnect();
+}
 
 // Photo Storage helper (IndexedDB / LocalStorage)
 const STORAGE_KEY = 'remote_capture_photos_v1';
