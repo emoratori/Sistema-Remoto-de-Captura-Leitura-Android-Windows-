@@ -170,39 +170,61 @@ if (typeof window !== 'undefined') {
   localBus.initAutoConnect();
 }
 
-// Photo Storage helper (IndexedDB / LocalStorage)
+// Photo Storage helper (In-memory + safe LocalStorage)
 const STORAGE_KEY = 'remote_capture_photos_v1';
+let inMemoryPhotos: CapturedPhoto[] = [];
 
 export function getSavedPhotos(): CapturedPhoto[] {
+  if (inMemoryPhotos.length > 0) return inMemoryPhotos;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw);
+    inMemoryPhotos = JSON.parse(raw);
+    return inMemoryPhotos;
   } catch {
-    return [];
+    return inMemoryPhotos;
   }
 }
 
 export function savePhoto(photo: CapturedPhoto): CapturedPhoto[] {
   try {
-    const existing = getSavedPhotos();
-    // Prepend newest
+    const existing = inMemoryPhotos.length > 0 ? inMemoryPhotos : getSavedPhotos();
     const updated = [photo, ...existing.filter((p) => p.id !== photo.id)].slice(0, 50);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    inMemoryPhotos = updated;
+
+    // Safely persist to localStorage, omitting huge base64 strings (>300KB) to prevent QuotaExceededError
+    try {
+      const lightweightToPersist = updated.map((p) => {
+        if (p.url && p.url.startsWith('data:') && p.url.length > 300000) {
+          // If it's a huge base64, save metadata without the huge string in localStorage
+          // (it stays in inMemoryPhotos and on the server disk)
+          return { ...p, url: p.filename ? `/photos/${p.filename}` : '' };
+        }
+        return p;
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweightToPersist));
+    } catch (quotaErr) {
+      console.warn('LocalStorage quota limit reached, keeping photo in memory:', quotaErr);
+    }
+
     return updated;
   } catch (e) {
-    console.warn('Failed to save photo to localStorage:', e);
-    return [];
+    console.warn('Failed to save photo:', e);
+    // NEVER return empty array! Return at least the current photo in memory
+    inMemoryPhotos = [photo, ...inMemoryPhotos.filter((p) => p.id !== photo.id)];
+    return inMemoryPhotos;
   }
 }
 
 export function deleteSavedPhoto(id: string): CapturedPhoto[] {
   try {
-    const existing = getSavedPhotos();
+    const existing = inMemoryPhotos.length > 0 ? inMemoryPhotos : getSavedPhotos();
     const updated = existing.filter((p) => p.id !== id);
+    inMemoryPhotos = updated;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     return updated;
   } catch {
-    return [];
+    inMemoryPhotos = inMemoryPhotos.filter((p) => p.id !== id);
+    return inMemoryPhotos;
   }
 }

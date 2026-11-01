@@ -42,48 +42,94 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+let lastAndroidSeen = 0;
+
 // Endpoints REST
 // 1. Listar fotos salvas ordenadas
 app.get('/api/photos', (req, res) => {
-  const files = fs.readdirSync(STORAGE_DIR)
-    .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg'))
-    .map(filename => {
-      const stat = fs.statSync(path.join(STORAGE_DIR, filename));
-      return {
-        id: filename,
-        filename,
-        url: `/photos/${filename}`,
-        timestamp: stat.mtime.toLocaleTimeString('pt-BR'),
-        createdTime: stat.mtime.getTime(),
-        sizeBytes: stat.size
-      };
-    })
-    .sort((a, b) => b.createdTime - a.createdTime);
+  try {
+    const files = fs.readdirSync(STORAGE_DIR)
+      .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg'))
+      .map(filename => {
+        const stat = fs.statSync(path.join(STORAGE_DIR, filename));
+        return {
+          id: filename,
+          filename,
+          url: `/photos/${filename}`,
+          timestamp: stat.mtime.toLocaleTimeString('pt-BR', { hour12: false }),
+          createdTime: stat.mtime.getTime(),
+          sizeBytes: stat.size,
+          width: 3840,
+          height: 2160,
+          focusDistance: 0.28
+        };
+      })
+      .sort((a, b) => b.createdTime - a.createdTime);
 
-  res.json(files);
+    res.json(files);
+  } catch {
+    res.json([]);
+  }
 });
 
-// 2. Upload de foto capturada pelo Android
-app.post('/api/upload-photo', upload.single('photo'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
-
-  const photoInfo = {
-    id: req.file.filename,
-    filename: req.file.filename,
-    url: `/photos/${req.file.filename}`,
-    timestamp: new Date().toLocaleTimeString('pt-BR'),
-    sizeBytes: req.file.size
-  };
-
-  // Notifica cliente Windows via WebSocket instantaneamente
-  broadcast({
-    type: 'PHOTO_READY',
-    payload: photoInfo,
+// 2. Status de Telemetria e Conexão
+app.get('/api/status', (req, res) => {
+  const isAndroidAlive = (Date.now() - lastAndroidSeen) < 7000;
+  res.json({
+    online: true,
+    androidConnected: isAndroidAlive,
+    clientsCount: clients.size,
+    lastAndroidSeen,
     timestamp: Date.now()
   });
+});
 
-  console.log(`[FOTO RECEBIDA] Gravada em disco: ${req.file.filename} (${Math.round(req.file.size / 1024)} KB)`);
-  res.json({ success: true, photo: photoInfo });
+// 3. Upload de foto capturada pelo Android (suporta FormData multipart E JSON base64)
+app.post('/api/upload-photo', (req, res) => {
+  upload.single('photo')(req, res, (err) => {
+    if (err) {
+      console.warn('[UPLOAD WARN]', err);
+    }
+
+    let filename = '';
+    let sizeBytes = 0;
+
+    if (req.file) {
+      filename = req.file.filename;
+      sizeBytes = req.file.size;
+    } else if (req.body && (req.body.imageBase64 || req.body.photoBase64)) {
+      const base64Str = req.body.imageBase64 || req.body.photoBase64;
+      const cleanBase64 = base64Str.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      filename = req.body.filename || `CAPT_${timestamp}.jpg`;
+      fs.writeFileSync(path.join(STORAGE_DIR, filename), buffer);
+      sizeBytes = buffer.length;
+    } else {
+      return res.status(400).json({ error: 'Nenhum arquivo ou imagem enviado' });
+    }
+
+    const photoInfo = {
+      id: filename,
+      filename,
+      url: `/photos/${filename}`,
+      timestamp: new Date().toLocaleTimeString('pt-BR', { hour12: false }),
+      sizeBytes,
+      width: Number(req.body?.width) || 3840,
+      height: Number(req.body?.height) || 2160,
+      focusDistance: Number(req.body?.focusDistance) || 0.28,
+    };
+
+    // Notifica cliente Windows via WebSocket instantaneamente com a URL leve do servidor
+    broadcast({
+      type: 'PHOTO_READY',
+      payload: photoInfo,
+      timestamp: Date.now()
+    });
+
+    console.log(`[FOTO RECEBIDA] Gravada em disco: ${filename} (${Math.round(sizeBytes / 1024)} KB)`);
+    res.json({ success: true, photo: photoInfo });
+  });
 });
 
 // Criação do servidor HTTP ou HTTPS
@@ -115,13 +161,47 @@ function broadcast(data) {
   }
 }
 
+// Telemetria periódica para os clientes
+setInterval(() => {
+  const isAndroidAlive = (Date.now() - lastAndroidSeen) < 7000;
+  broadcast({
+    type: 'SERVER_TELEMETRY',
+    payload: {
+      androidOnline: isAndroidAlive,
+      clientsCount: clients.size,
+      lastAndroidSeen
+    },
+    timestamp: Date.now()
+  });
+}, 2500);
+
 wss.on('connection', (ws, req) => {
   clients.add(ws);
   console.log('[WS] Novo cliente conectado da rede local');
 
+  // Envia status imediato ao novo cliente conectado
+  if (Date.now() - lastAndroidSeen < 7000) {
+    ws.send(JSON.stringify({
+      type: 'ANDROID_STATUS',
+      payload: { online: true },
+      timestamp: Date.now()
+    }));
+  }
+
   ws.on('message', (message) => {
     try {
       const parsed = JSON.parse(message);
+
+      // Rastreia heartbeat do Android
+      if (
+        parsed.type === 'HEARTBEAT' || 
+        parsed.type === 'ANDROID_STATUS' || 
+        (parsed.type === 'PONG' && parsed.payload?.device === 'android') ||
+        (parsed.type === 'REGISTER' && parsed.payload?.device === 'android')
+      ) {
+        lastAndroidSeen = Date.now();
+      }
+
       // Re-encaminha para todos os outros clientes (Windows <-> Android)
       for (const client of clients) {
         if (client !== ws && client.readyState === WebSocket.OPEN) {

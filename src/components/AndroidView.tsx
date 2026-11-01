@@ -181,12 +181,23 @@ export default function AndroidView({ serverIp }: AndroidViewProps) {
     setLastPhotoTime(timeStr);
 
     if (photoBlob) {
+      const fname = `CAPT_${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}.jpg`;
+
+      // 1. First, prepare FormData for standard multipart upload to server
+      const formData = new FormData();
+      formData.append('photo', photoBlob, fname);
+      formData.append('filename', fname);
+      formData.append('width', String(width));
+      formData.append('height', String(height));
+      formData.append('focusDistance', String(targetFocusDistance || 0.28));
+
+      // 2. Also prepare local dataUrl as immediate fallback
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const dataUrl = reader.result as string;
-        const fname = `CAPT_${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours()}${now.getMinutes()}${now.getSeconds()}.jpg`;
-        const photo: CapturedPhoto = {
-          id: `photo-${Date.now()}`,
+
+        const localPhoto: CapturedPhoto = {
+          id: fname,
           url: dataUrl,
           timestamp: timeStr,
           filename: fname,
@@ -196,22 +207,50 @@ export default function AndroidView({ serverIp }: AndroidViewProps) {
           focusDistance: targetFocusDistance || 0.28,
         };
 
-        // 1. Upload directly to Node server disk storage
-        fetch('/api/upload-photo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageBase64: dataUrl,
-            filename: fname,
-            width,
-            height,
-            focusDistance: targetFocusDistance || 0.28,
-          }),
-        }).catch((err) => console.warn('Falha no upload para o servidor:', err));
+        try {
+          // Send multipart to Node server
+          const response = await fetch('/api/upload-photo', {
+            method: 'POST',
+            body: formData,
+          });
 
-        // 2. Notify Windows via localBus / WebSocket
-        localBus.send('PHOTO_READY', photo);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.photo) {
+              // Server saved on disk and returned lightweight URL (/photos/...)
+              localBus.send('PHOTO_READY', data.photo);
+              return;
+            }
+          }
+
+          // Fallback to JSON base64 if multipart didn't return photo
+          const jsonRes = await fetch('/api/upload-photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageBase64: dataUrl,
+              filename: fname,
+              width,
+              height,
+              focusDistance: targetFocusDistance || 0.28,
+            }),
+          });
+
+          if (jsonRes.ok) {
+            const data = await jsonRes.json();
+            if (data.photo) {
+              localBus.send('PHOTO_READY', data.photo);
+              return;
+            }
+          }
+        } catch (uploadErr) {
+          console.warn('Servidor local upload error, sending direct photo:', uploadErr);
+        }
+
+        // Direct WebSocket broadcast if HTTP upload had any issue
+        localBus.send('PHOTO_READY', localPhoto);
       };
+
       reader.readAsDataURL(photoBlob);
     } else {
       console.warn('No photo blob could be generated from hardware stream');
@@ -247,7 +286,7 @@ export default function AndroidView({ serverIp }: AndroidViewProps) {
     }
   };
 
-  // Listen to remote commands from Windows
+  // Listen to remote commands from Windows & announce heartbeat
   useEffect(() => {
     startCamera();
 
@@ -263,15 +302,21 @@ export default function AndroidView({ serverIp }: AndroidViewProps) {
       } else if (msg.type === 'AUTO_FOCUS') {
         triggerAutoFocus();
       } else if (msg.type === 'PING') {
+        localBus.send('ANDROID_STATUS', { online: true, device: 'android' });
         localBus.send('PONG', { device: 'android' });
       }
     });
 
-    // Notify initial status
-    localBus.send('ANDROID_STATUS', { online: true });
+    // Notify initial status and continuous heartbeat every 2.5s
+    localBus.send('ANDROID_STATUS', { online: true, device: 'android' });
+    const heartbeatTimer = setInterval(() => {
+      localBus.send('ANDROID_STATUS', { online: true, device: 'android' });
+      localBus.send('HEARTBEAT', { device: 'android' });
+    }, 2500);
 
     return () => {
       unsubscribe();
+      clearInterval(heartbeatTimer);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }

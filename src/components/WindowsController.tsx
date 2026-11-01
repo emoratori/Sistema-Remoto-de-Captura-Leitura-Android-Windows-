@@ -114,23 +114,35 @@ export default function WindowsController({
       .catch((err) => console.warn('QR code gen error:', err));
   }, [androidUrl]);
 
-  // Load photos on mount or populate with realistic sample
+  // Load photos on mount from server disk or local fallback
   useEffect(() => {
-    const saved = getSavedPhotos();
-    if (saved.length > 0) {
-      setPhotos(saved);
-      setCurrentIndex(0);
-    } else {
-      // Seed with sample photos simulating 14" laptop screen
-      const sample1 = generateSyntheticLaptopCapture('code');
-      const sample2 = generateSyntheticLaptopCapture('docs');
-      const sample3 = generateSyntheticLaptopCapture('terminal');
-      const initial = [sample1, sample2, sample3];
-      savePhoto(sample3);
-      savePhoto(sample2);
-      savePhoto(sample1);
-      setPhotos(initial);
-      setCurrentIndex(0);
+    fetch('/api/photos')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((serverPhotos: CapturedPhoto[]) => {
+        if (serverPhotos && Array.isArray(serverPhotos) && serverPhotos.length > 0) {
+          setPhotos(serverPhotos);
+          setCurrentIndex(0);
+          return;
+        }
+        loadLocalFallback();
+      })
+      .catch(() => {
+        loadLocalFallback();
+      });
+
+    function loadLocalFallback() {
+      const saved = getSavedPhotos();
+      if (saved.length > 0) {
+        setPhotos(saved);
+        setCurrentIndex(0);
+      } else {
+        const sample1 = generateSyntheticLaptopCapture('code');
+        const sample2 = generateSyntheticLaptopCapture('docs');
+        const sample3 = generateSyntheticLaptopCapture('terminal');
+        const initial = [sample1, sample2, sample3];
+        setPhotos(initial);
+        setCurrentIndex(0);
+      }
     }
   }, []);
 
@@ -139,8 +151,11 @@ export default function WindowsController({
     const unsubscribe = localBus.subscribe((msg) => {
       if (msg.type === 'PHOTO_READY' && msg.payload) {
         const newPhoto: CapturedPhoto = msg.payload;
-        const updated = savePhoto(newPhoto);
-        setPhotos(updated);
+        setPhotos((prev) => {
+          const filtered = prev.filter((p) => p.id !== newPhoto.id);
+          return [newPhoto, ...filtered];
+        });
+        savePhoto(newPhoto);
         setCurrentIndex(0);
         setIsCapturing(false);
         // Clear old selection on new photo
@@ -187,20 +202,10 @@ export default function WindowsController({
     setIsCapturing(true);
     localBus.send('TAKE_PHOTO', { focusDistance });
 
-    // Fallback timer if Android device isn't responding in 3s
+    // Release loading state after 8s if timeout
     setTimeout(() => {
-      setIsCapturing((prev) => {
-        if (prev) {
-          // If no response from real phone, generate a synthetic fresh capture for desktop testing
-          const freshPhoto = generateSyntheticLaptopCapture('code');
-          const updated = savePhoto(freshPhoto);
-          setPhotos(updated);
-          setCurrentIndex(0);
-          return false;
-        }
-        return false;
-      });
-    }, 2800);
+      setIsCapturing(false);
+    }, 8000);
   };
 
   // Current photo

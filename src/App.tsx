@@ -65,18 +65,27 @@ export default function App() {
         const isOnline = Boolean(msg.payload?.androidOnline);
         setIsAndroidOnline(isOnline);
         if (isOnline) lastSeen = Date.now();
+      } else if (msg.type === 'HEARTBEAT' || msg.type === 'PONG') {
+        setIsAndroidOnline(true);
+        lastSeen = Date.now();
       }
     });
 
-    // Watchdog check every 3s: if no heartbeat in 8s, mark as offline
+    // Windows sends active PING inquiry every 3s
+    const pingInterval = setInterval(() => {
+      localBus.send('PING', { source: 'windows_monitor' });
+    }, 3000);
+
+    // Watchdog check every 3s: if no heartbeat/pong in 7s, mark as offline
     const interval = setInterval(() => {
-      if (lastSeen > 0 && Date.now() - lastSeen > 8000) {
+      if (lastSeen > 0 && Date.now() - lastSeen > 7000) {
         setIsAndroidOnline(false);
       }
     }, 3000);
 
     return () => {
       unsub();
+      clearInterval(pingInterval);
       clearInterval(interval);
     };
   }, []);
