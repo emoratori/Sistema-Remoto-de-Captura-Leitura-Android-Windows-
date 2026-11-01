@@ -142,6 +142,7 @@ app.post('/api/upload-photo', (req, res) => {
 
 // Criação do servidor HTTP ou HTTPS
 let server;
+let isHttps = false;
 const keyPath = path.join(__dirname, 'cert.key');
 const certPath = path.join(__dirname, 'cert.crt');
 
@@ -150,6 +151,7 @@ if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
     key: fs.readFileSync(keyPath),
     cert: fs.readFileSync(certPath)
   }, app);
+  isHttps = true;
   console.log('[SECURITY] HTTPS ativado com certificados locais.');
 } else {
   server = http.createServer(app);
@@ -225,10 +227,11 @@ wss.on('connection', (ws, req) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
+  const proto = isHttps ? 'https' : 'http';
   console.log(\`======================================================\`);
-  console.log(\`  Servidor Local Android-Windows Rodando!\`);
-  console.log(\`  Endereço local Windows: http://localhost:\${PORT}\`);
-  console.log(\`  Acesse no Android:      http://<SEU_IP_WINDOWS>:\${PORT}\`);
+  console.log(\`  Servidor Local Android-Windows Rodando! [\${proto.toUpperCase()}]\`);
+  console.log(\`  Endereço local Windows: \${proto}://localhost:\${PORT}\`);
+  console.log(\`  Acesse no Android:      \${proto}://<SEU_IP_WINDOWS>:\${PORT}/#android\`);
   console.log(\`  Armazenamento de fotos: \${STORAGE_DIR}\`);
   console.log(\`======================================================\`);
 });
