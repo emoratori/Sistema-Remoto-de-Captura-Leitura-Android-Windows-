@@ -419,42 +419,112 @@ export default function WindowsController({
 
   const hasValidSelection = Boolean(selection && selection.width > 0 && selection.height > 0);
 
-  const handleCopySelectionToClipboard = async () => {
+  const handleCopySelectionToClipboard = () => {
     if (!currentPhoto || !selection || selection.width <= 0 || selection.height <= 0) return;
+
+    if (!navigator.clipboard || typeof ClipboardItem === 'undefined' || !navigator.clipboard.write) {
+      setCopyImageError('Cópia de imagem não suportada neste contexto. Acesse via HTTPS ou localhost.');
+      setTimeout(() => setCopyImageError(null), 4000);
+      return;
+    }
+
+    const cropNorm = getNormalizedImageCrop(selection);
+    if (!cropNorm || cropNorm.width <= 0 || cropNorm.height <= 0) {
+      setCopyImageError('A seleção está fora da área da imagem.');
+      setTimeout(() => setCopyImageError(null), 4000);
+      return;
+    }
 
     setCopyingImage(true);
     setCopyImageError(null);
 
-    try {
-      const cropNorm = getNormalizedImageCrop(selection);
-      if (!cropNorm || cropNorm.width <= 0 || cropNorm.height <= 0) {
-        throw new Error('A seleção está fora da área da imagem.');
-      }
-
-      const croppedCanvas = await cropImageToCanvas(currentPhoto.url, cropNorm);
-      const blob = await new Promise<Blob | null>((resolve) =>
-        croppedCanvas.toBlob(resolve, 'image/png')
+    const buildSizedPngBlob = async (): Promise<Blob> => {
+      let canvas: HTMLCanvasElement;
+      const canUseDomImg = Boolean(
+        imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0
       );
 
+      if (canUseDomImg && imgRef.current) {
+        try {
+          canvas = await cropImageToCanvas(imgRef.current, cropNorm);
+        } catch {
+          canvas = await cropImageToCanvas(currentPhoto.url, cropNorm);
+        }
+      } else {
+        canvas = await cropImageToCanvas(currentPhoto.url, cropNorm);
+      }
+
+      const canvasToPng = (c: HTMLCanvasElement) =>
+        new Promise<Blob | null>((resolve) => {
+          try {
+            c.toBlob(resolve, 'image/png');
+          } catch {
+            resolve(null);
+          }
+        });
+
+      let blob = await canvasToPng(canvas);
       if (!blob) {
-        throw new Error('Falha ao gerar a imagem da seleção.');
+        // Retry from clean URL load if DOM element was tainted
+        canvas = await cropImageToCanvas(currentPhoto.url, cropNorm);
+        blob = await canvasToPng(canvas);
       }
 
-      if (!navigator.clipboard || typeof ClipboardItem === 'undefined' || !navigator.clipboard.write) {
-        throw new Error('Cópia de imagem para a área de transferência não suportada neste navegador.');
+      // Windows 11 Clipboard History (Win+V) silently drops items > 4 MB.
+      // Keep PNG <= 3.5 MB so large 16MP camera crops always appear in Win+V and Ctrl+V.
+      const MAX_CLIPBOARD_BYTES = 3.5 * 1024 * 1024;
+      let attempts = 0;
+      while (
+        blob &&
+        blob.size > MAX_CLIPBOARD_BYTES &&
+        attempts < 5 &&
+        canvas.width > 320 &&
+        canvas.height > 320
+      ) {
+        attempts++;
+        const scale = 0.72;
+        const resized = document.createElement('canvas');
+        resized.width = Math.max(1, Math.round(canvas.width * scale));
+        resized.height = Math.max(1, Math.round(canvas.height * scale));
+        const rCtx = resized.getContext('2d');
+        if (!rCtx) break;
+        rCtx.imageSmoothingEnabled = true;
+        rCtx.imageSmoothingQuality = 'high';
+        rCtx.drawImage(canvas, 0, 0, resized.width, resized.height);
+        canvas = resized;
+        blob = await canvasToPng(canvas);
       }
 
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': blob }),
-      ]);
+      if (!blob || blob.size === 0) {
+        throw new Error('Falha ao gerar a imagem PNG da seleção.');
+      }
 
-      setCopiedImage(true);
-      setTimeout(() => setCopiedImage(false), 2500);
+      return blob;
+    };
+
+    try {
+      const clipboardItem = new ClipboardItem({
+        'image/png': buildSizedPngBlob(),
+      });
+
+      navigator.clipboard
+        .write([clipboardItem])
+        .then(() => {
+          setCopiedImage(true);
+          setTimeout(() => setCopiedImage(false), 2500);
+        })
+        .catch((err) => {
+          console.error('Copy selection error:', err);
+          setCopyImageError((err as Error).message || 'Não foi possível copiar a seleção.');
+          setTimeout(() => setCopyImageError(null), 4000);
+        })
+        .finally(() => {
+          setCopyingImage(false);
+        });
     } catch (err) {
-      console.error('Copy selection error:', err);
-      setCopyImageError((err as Error).message || 'Não foi possível copiar a seleção.');
+      console.error('ClipboardItem error:', err);
+      setCopyImageError((err as Error).message || 'Erro ao preparar imagem para a área de transferência.');
       setTimeout(() => setCopyImageError(null), 4000);
-    } finally {
       setCopyingImage(false);
     }
   };
