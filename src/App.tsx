@@ -103,33 +103,19 @@ export default function App() {
       {/* Top Application Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-12 gap-3">
             {/* Brand Title */}
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold">
-                <Camera className="w-5 h-5 text-emerald-400" />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold shrink-0">
+                <Camera className="w-4 h-4 text-emerald-400" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base font-bold text-slate-900 tracking-tight">
-                    Sistema Remoto Android-Windows
-                  </h1>
-                  <span className="text-xs text-slate-500 font-medium hidden sm:inline">
-                    · Captura Óptica & Leitura OCR de Tela
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span>Redmi Note 10S (64MP)</span>
-                  <span aria-hidden="true">·</span>
-                  <span>Laptop 14" (28cm)</span>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-emerald-600 font-medium">Rede Local Segura</span>
-                </div>
-              </div>
+              <h1 className="text-sm font-bold text-slate-900 tracking-tight truncate">
+                Sistema Remoto Android-Windows
+              </h1>
             </div>
 
             {/* Navigation Tabs (Functional interactive tabs) */}
-            <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+            <nav className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0">
               {[
                 { id: 'analysis', label: 'Parecer Técnico', icon: ShieldCheck },
                 { id: 'windows', label: 'Console Windows 11', icon: Monitor },
@@ -143,7 +129,7 @@ export default function App() {
                   <button
                     key={item.id}
                     onClick={() => setActiveTab(item.id as any)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
                       isActive
                         ? 'bg-white text-slate-900 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -160,7 +146,7 @@ export default function App() {
       </header>
 
       {/* Main Content Viewport */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
         {activeTab === 'analysis' && (
           <TechnicalAnalysis />
         )}

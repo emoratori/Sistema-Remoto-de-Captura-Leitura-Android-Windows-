@@ -531,80 +531,6 @@ export default function WindowsController({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      {/* Top Bar / Status Banner */}
-      <div className="lg:col-span-12 bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold">
-            <Camera className="w-5 h-5 text-emerald-400" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-slate-900">Console Remoto Windows 11</h1>
-              <span className="text-[11px] text-slate-500 font-mono">PWA Control Station</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-              <span>IP Servidor:</span>
-              <input
-                type="text"
-                value={serverIp}
-                onChange={(e) => onServerIpChange(e.target.value)}
-                className="font-mono text-xs bg-slate-50 border border-slate-200 rounded px-2 py-0.5 text-slate-700 w-36 focus:outline-none focus:ring-1 focus:ring-slate-400"
-                placeholder="192.168.1.100"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Android Device Status & QR Connection */}
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => setShowQrModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold transition-all shadow-xs"
-          >
-            <QrCode className="w-4 h-4 text-indigo-600" />
-            <span>Conectar Android (QR Code)</span>
-          </button>
-
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
-            isAndroidOnline
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-700'
-          }`}>
-            {isAndroidOnline ? (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-bold">Android Conectado</span>
-                <span className="text-[11px] text-emerald-600">· Redmi Note 10S</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                <span className="text-xs font-semibold">Android Desconectado</span>
-                <button
-                  onClick={() => setShowQrModal(true)}
-                  className="text-[11px] text-indigo-700 font-bold underline hover:text-indigo-900 ml-1"
-                >
-                  Conectar agora
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Big "Tirar foto agora" Button */}
-          <button
-            onClick={handleTakePhoto}
-            disabled={isCapturing}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all ${
-              isCapturing
-                ? 'bg-slate-400 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-700 active:scale-98 shadow-emerald-700/20'
-            }`}
-          >
-            <Camera className={`w-4 h-4 ${isCapturing ? 'animate-spin' : ''}`} />
-            {isCapturing ? 'Capturando 16MP...' : 'Tirar foto agora'}
-          </button>
-        </div>
-      </div>
 
       {/* QR Code & Mobile Pairing Instructions Modal */}
       {showQrModal && (
@@ -812,6 +738,26 @@ export default function WindowsController({
                 className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Primary "Tirar foto agora" Button right next to viewer action buttons */}
+              <button
+                onClick={handleTakePhoto}
+                disabled={isCapturing}
+                title={isAndroidOnline ? 'Android conectado — Disparar captura remota' : 'Android desconectado — Verifique conexão abaixo'}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-xs transition-all ${
+                  isCapturing
+                    ? 'bg-slate-400 cursor-not-allowed'
+                    : 'bg-emerald-600 hover:bg-emerald-700 active:scale-98'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isAndroidOnline ? 'bg-emerald-200 animate-pulse' : 'bg-red-300'
+                  }`}
+                />
+                <Camera className={`w-3.5 h-3.5 ${isCapturing ? 'animate-spin' : ''}`} />
+                <span>{isCapturing ? 'Capturando...' : 'Tirar foto agora'}</span>
               </button>
             </div>
           </div>
@@ -1043,71 +989,8 @@ export default function WindowsController({
         </div>
       </div>
 
-      {/* Right Column: Camera Focus & Text Dispatcher (Sections 6.2 & 6.6) */}
+      {/* Right Column: Primary Android Text Dispatcher (Highlighted at top) */}
       <div className="lg:col-span-4 space-y-4">
-        {/* Focus Control Card (Section 6.2) */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-indigo-600" />
-              Controle de Foco Remoto
-            </h3>
-            <span className="text-[11px] text-slate-500 font-mono">
-              {focusDistance.toFixed(2)} m
-            </span>
-          </div>
-
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Distância calibrada entre o Redmi Note 10S e o laptop de 14": <strong>25 cm a 30 cm</strong>.
-          </p>
-
-          {/* Slider */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-[11px] text-slate-400 font-mono">
-              <span>Macro (0.10m)</span>
-              <span className="text-emerald-700 font-semibold">Ideal (0.28m)</span>
-              <span>Infinito (1.00m)</span>
-            </div>
-            <input
-              type="range"
-              min="0.10"
-              max="0.80"
-              step="0.01"
-              value={focusDistance}
-              onChange={(e) => handleFocusChange(parseFloat(e.target.value))}
-              className="w-full accent-emerald-600 cursor-pointer"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleFocusChange(0.28)}
-              className="flex-1 py-1.5 px-3 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 text-center"
-            >
-              28 cm (Laptop 14")
-            </button>
-            <button
-              onClick={handleTriggerAutoFocus}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium text-center transition-all ${
-                isAutoFocus 
-                  ? 'bg-indigo-600 text-white' 
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              Foco Automático (PDAF)
-            </button>
-          </div>
-
-          {!cameraCapabilities.hasManualFocus && (
-            <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-800 flex items-start gap-1.5">
-              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
-              <span>
-                Foco manual não exposto pelo driver MediaTek. O sistema opera em Foco Automático PDAF contínuo.
-              </span>
-            </div>
-          )}
-        </div>
-
         {/* Text Sender Card (Section 6.6) */}
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
@@ -1128,7 +1011,7 @@ export default function WindowsController({
             value={androidText}
             maxLength={255}
             onChange={(e) => setAndroidText(e.target.value)}
-            rows={4}
+            rows={6}
             className="w-full text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             placeholder="Digite até 255 caracteres para exibir no Android..."
           />
@@ -1176,18 +1059,124 @@ export default function WindowsController({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Bottom Secondary Controls Row: Connection/QR, Remote Focus & Storage */}
+      <div className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-4 pt-2 border-t border-slate-200/80">
+        {/* Connection, Server IP & Android Status Card */}
+        <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold shrink-0">
+                <Camera className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <h2 className="text-xs font-bold text-slate-900">Console Remoto Windows 11</h2>
+                <span className="text-[10px] text-slate-500 font-mono">Conexão & Pareamento Android</span>
+              </div>
+            </div>
+
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] transition-all ${
+              isAndroidOnline
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${isAndroidOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+              <span className="font-semibold">{isAndroidOnline ? 'Android Conectado' : 'Desconectado'}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span>IP Servidor:</span>
+              <input
+                type="text"
+                value={serverIp}
+                onChange={(e) => onServerIpChange(e.target.value)}
+                className="font-mono text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-700 w-36 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                placeholder="192.168.1.100"
+              />
+            </div>
+
+            <button
+              onClick={() => setShowQrModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold transition-all"
+            >
+              <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Conectar Android (QR Code)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Focus Control Card (Section 6.2) */}
+        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 p-4 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+              Controle de Foco Remoto
+            </h3>
+            <span className="text-[11px] text-slate-500 font-mono">
+              {focusDistance.toFixed(2)} m
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+              <span>Macro (0.10m)</span>
+              <span className="text-emerald-700 font-semibold">Ideal (0.28m)</span>
+              <span>Infinito (1.00m)</span>
+            </div>
+            <input
+              type="range"
+              min="0.10"
+              max="0.80"
+              step="0.01"
+              value={focusDistance}
+              onChange={(e) => handleFocusChange(parseFloat(e.target.value))}
+              className="w-full accent-emerald-600 cursor-pointer"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleFocusChange(0.28)}
+              className="flex-1 py-1 px-2.5 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 hover:bg-slate-50 text-center"
+            >
+              28 cm (Laptop 14")
+            </button>
+            <button
+              onClick={handleTriggerAutoFocus}
+              className={`flex-1 py-1 px-2.5 rounded-lg text-[11px] font-medium text-center transition-all ${
+                isAutoFocus 
+                  ? 'bg-indigo-600 text-white' 
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              Foco Automático (PDAF)
+            </button>
+          </div>
+
+          {!cameraCapabilities.hasManualFocus && (
+            <div className="p-2 bg-amber-50 rounded-lg border border-amber-200 text-[10px] text-amber-800 flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600 mt-0.5" />
+              <span>
+                Foco manual não exposto pelo driver MediaTek. Operando em PDAF contínuo.
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Server Storage Summary */}
-        <div className="bg-slate-900 text-white rounded-xl p-4 text-xs space-y-2">
+        <div className="lg:col-span-3 bg-slate-900 text-white rounded-xl p-4 text-xs flex flex-col justify-between gap-2">
           <div className="flex items-center justify-between text-slate-400">
             <span>Armazenamento Local</span>
             <span className="font-mono text-emerald-400">Node.js Server</span>
           </div>
-          <div className="font-mono text-[11px] text-slate-300">
+          <div className="font-mono text-[11px] text-slate-300 break-all">
             Pasta: C:\LocalCapture\Storage\
           </div>
           <div className="text-slate-400 text-[11px]">
-            {photos.length} fotos salvas em disco com resolução nativa. Cada foto é gravada instantaneamente ao término da exposição.
+            {photos.length} fotos salvas em disco com resolução nativa.
           </div>
         </div>
       </div>
