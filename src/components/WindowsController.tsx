@@ -94,7 +94,7 @@ export default function WindowsController({
   const [copiedImage, setCopiedImage] = useState<boolean>(false);
   const [copyImageError, setCopyImageError] = useState<string | null>(null);
   const [useAntiMoire, setUseAntiMoire] = useState<boolean>(true);
-  const [useOtsu, setUseOtsu] = useState<boolean>(true);
+  const [useOtsu, setUseOtsu] = useState<boolean>(false);
 
   // QR Code Modal for Android Setup
   const [showQrModal, setShowQrModal] = useState<boolean>(false);
@@ -278,6 +278,65 @@ export default function WindowsController({
     }
   };
 
+  const getNormalizedImageCrop = (sel: SelectionRect | null): SelectionRect | null => {
+    if (!sel || sel.width <= 0 || sel.height <= 0) return null;
+
+    if (!imageContainerRef.current || !imgRef.current) {
+      return sel;
+    }
+
+    const containerRect = imageContainerRef.current.getBoundingClientRect();
+    const imgRect = imgRef.current.getBoundingClientRect();
+    const natW = imgRef.current.naturalWidth;
+    const natH = imgRef.current.naturalHeight;
+
+    if (
+      containerRect.width <= 0 ||
+      containerRect.height <= 0 ||
+      imgRect.width <= 0 ||
+      imgRect.height <= 0 ||
+      natW <= 0 ||
+      natH <= 0
+    ) {
+      return sel;
+    }
+
+    const natRatio = natW / natH;
+    const rectRatio = imgRect.width / imgRect.height;
+
+    let renW = imgRect.width;
+    let renH = imgRect.height;
+    let renLeft = imgRect.left;
+    let renTop = imgRect.top;
+
+    if (rectRatio > natRatio) {
+      renW = imgRect.height * natRatio;
+      renLeft = imgRect.left + (imgRect.width - renW) / 2;
+    } else {
+      renH = imgRect.width / natRatio;
+      renTop = imgRect.top + (imgRect.height - renH) / 2;
+    }
+
+    const selLeft = containerRect.left + sel.x * containerRect.width;
+    const selTop = containerRect.top + sel.y * containerRect.height;
+    const selRight = selLeft + sel.width * containerRect.width;
+    const selBottom = selTop + sel.height * containerRect.height;
+
+    const x1 = Math.max(0, Math.min(1, (selLeft - renLeft) / renW));
+    const y1 = Math.max(0, Math.min(1, (selTop - renTop) / renH));
+    const x2 = Math.max(0, Math.min(1, (selRight - renLeft) / renW));
+    const y2 = Math.max(0, Math.min(1, (selBottom - renTop) / renH));
+
+    const w = x2 - x1;
+    const h = y2 - y1;
+
+    if (w <= 0 || h <= 0) {
+      return { x: 0, y: 0, width: 0, height: 0 };
+    }
+
+    return { x: x1, y: y1, width: w, height: h };
+  };
+
   // Run English OCR
   const handleRunOcr = async () => {
     if (!currentPhoto) return;
@@ -285,9 +344,14 @@ export default function WindowsController({
     setOcrResult(null);
 
     try {
+      const mappedCrop = getNormalizedImageCrop(selection);
+      if (mappedCrop && (mappedCrop.width <= 0 || mappedCrop.height <= 0)) {
+        throw new Error('A seleção está fora da área da imagem.');
+      }
+
       const res = await runEnglishOcr(
         currentPhoto.url,
-        selection,
+        mappedCrop,
         {
           grayscale: true,
           contrastBoost: 1.25,
@@ -327,57 +391,9 @@ export default function WindowsController({
     setCopyImageError(null);
 
     try {
-      let cropNorm = selection;
-
-      if (imageContainerRef.current && imgRef.current) {
-        const containerRect = imageContainerRef.current.getBoundingClientRect();
-        const imgRect = imgRef.current.getBoundingClientRect();
-        const natW = imgRef.current.naturalWidth;
-        const natH = imgRef.current.naturalHeight;
-
-        if (
-          containerRect.width > 0 &&
-          containerRect.height > 0 &&
-          imgRect.width > 0 &&
-          imgRect.height > 0 &&
-          natW > 0 &&
-          natH > 0
-        ) {
-          const natRatio = natW / natH;
-          const rectRatio = imgRect.width / imgRect.height;
-
-          let renW = imgRect.width;
-          let renH = imgRect.height;
-          let renLeft = imgRect.left;
-          let renTop = imgRect.top;
-
-          if (rectRatio > natRatio) {
-            renW = imgRect.height * natRatio;
-            renLeft = imgRect.left + (imgRect.width - renW) / 2;
-          } else {
-            renH = imgRect.width / natRatio;
-            renTop = imgRect.top + (imgRect.height - renH) / 2;
-          }
-
-          const selLeft = containerRect.left + selection.x * containerRect.width;
-          const selTop = containerRect.top + selection.y * containerRect.height;
-          const selRight = selLeft + selection.width * containerRect.width;
-          const selBottom = selTop + selection.height * containerRect.height;
-
-          const x1 = Math.max(0, Math.min(1, (selLeft - renLeft) / renW));
-          const y1 = Math.max(0, Math.min(1, (selTop - renTop) / renH));
-          const x2 = Math.max(0, Math.min(1, (selRight - renLeft) / renW));
-          const y2 = Math.max(0, Math.min(1, (selBottom - renTop) / renH));
-
-          const w = x2 - x1;
-          const h = y2 - y1;
-
-          if (w <= 0 || h <= 0) {
-            throw new Error('A seleção está fora da área da imagem.');
-          }
-
-          cropNorm = { x: x1, y: y1, width: w, height: h };
-        }
+      const cropNorm = getNormalizedImageCrop(selection);
+      if (!cropNorm || cropNorm.width <= 0 || cropNorm.height <= 0) {
+        throw new Error('A seleção está fora da área da imagem.');
       }
 
       const croppedCanvas = await cropImageToCanvas(currentPhoto.url, cropNorm);

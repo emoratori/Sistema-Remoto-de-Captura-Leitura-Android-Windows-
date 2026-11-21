@@ -24,6 +24,9 @@ async function getWorker(onProgress?: OcrProgressCallback) {
         }
       },
     });
+    await cachedWorker.setParameters({
+      user_defined_dpi: '300',
+    });
   }
   return cachedWorker;
 }
