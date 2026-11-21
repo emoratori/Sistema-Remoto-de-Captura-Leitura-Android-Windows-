@@ -72,6 +72,28 @@ app.get('/api/photos', (req, res) => {
   }
 });
 
+// 1b. Excluir foto salva em disco
+app.delete('/api/photos/:filename', (req, res) => {
+  try {
+    const safeName = path.basename(req.params.filename || '');
+    if (!safeName) {
+      return res.status(400).json({ error: 'Nome de arquivo inválido' });
+    }
+    const targetPath = path.resolve(STORAGE_DIR, safeName);
+    if (!targetPath.startsWith(STORAGE_DIR + path.sep)) {
+      return res.status(400).json({ error: 'Caminho inválido' });
+    }
+    if (fs.existsSync(targetPath)) {
+      fs.unlinkSync(targetPath);
+      console.log(`[FOTO EXCLUÍDA] Removida do disco: ${safeName}`);
+      return res.json({ success: true, deleted: safeName });
+    }
+    return res.status(404).json({ error: 'Foto não encontrada' });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // 2. Status de Telemetria e Conexão
 app.get('/api/status', (req, res) => {
   const isAndroidAlive = (Date.now() - lastAndroidSeen) < 7000;

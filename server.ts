@@ -79,6 +79,28 @@ async function startServer() {
     }
   });
 
+  // REST API: Delete a saved photo from disk
+  app.delete('/api/photos/:filename', (req, res) => {
+    try {
+      const safeName = path.basename(req.params.filename || '');
+      if (!safeName) {
+        return res.status(400).json({ error: 'Nome de arquivo inválido' });
+      }
+      const targetPath = path.resolve(STORAGE_DIR, safeName);
+      if (!targetPath.startsWith(STORAGE_DIR + path.sep)) {
+        return res.status(400).json({ error: 'Caminho inválido' });
+      }
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+        console.log(`[FOTO EXCLUÍDA] Removida do disco: ${safeName}`);
+        return res.json({ success: true, deleted: safeName });
+      }
+      return res.status(404).json({ error: 'Foto não encontrada' });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   // REST API: Health & Telemetry Status
   app.get('/api/status', (req, res) => {
     const isAndroidAlive = (Date.now() - lastAndroidHeartbeat) < 7000 && androidSockets.size > 0;

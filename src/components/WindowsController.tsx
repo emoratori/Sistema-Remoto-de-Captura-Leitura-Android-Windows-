@@ -23,11 +23,12 @@ import {
   Clock,
   Info,
   QrCode,
-  X
+  X,
+  Hand
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { CapturedPhoto, SelectionRect, CameraCapabilities } from '../types';
-import { localBus, getSavedPhotos, savePhoto } from '../services/localBus';
+import { localBus, getSavedPhotos, savePhoto, deleteSavedPhoto } from '../services/localBus';
 import { runEnglishOcr, OcrResult } from '../services/tesseractOcr';
 import { cropImageToCanvas } from '../services/imageProcessing';
 import { generateSyntheticLaptopCapture } from '../data/samplePhotos';
@@ -76,6 +77,7 @@ export default function WindowsController({
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState<boolean>(false);
+  const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // ROI / Selection Rectangle
@@ -216,13 +218,41 @@ export default function WindowsController({
   // Current photo
   const currentPhoto = photos[currentIndex] || null;
 
-  // ROI Mouse Events for drawing selection box
+  // Delete current photo from UI, localStorage and server disk
+  const handleDeleteCurrentPhoto = async () => {
+    if (!currentPhoto) return;
+    const photoToDelete = currentPhoto;
+
+    deleteSavedPhoto(photoToDelete.id);
+    setPhotos((prev) => {
+      const updated = prev.filter((p) => p.id !== photoToDelete.id);
+      setCurrentIndex((idx) => Math.max(0, Math.min(idx, updated.length - 1)));
+      return updated;
+    });
+    setSelection(null);
+    setOcrResult(null);
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+
+    if (photoToDelete.filename) {
+      try {
+        await fetch(`/api/photos/${encodeURIComponent(photoToDelete.filename)}`, {
+          method: 'DELETE',
+        });
+      } catch {
+        // Ignore if sample/local-only photo
+      }
+    }
+  };
+
+  // ROI Mouse Events for drawing selection box or panning zoomed image
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!imageContainerRef.current) return;
+    if (!imageContainerRef.current || !currentPhoto) return;
     const rect = imageContainerRef.current.getBoundingClientRect();
 
-    if (e.shiftKey || e.button === 1 || e.altKey) {
+    if (interactionMode === 'pan' || e.shiftKey || e.button === 1 || e.altKey) {
       // Pan mode
+      if (selection) setSelection(null);
       setIsPanning(true);
       panStartRef.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
       return;
@@ -243,10 +273,15 @@ export default function WindowsController({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isPanning) {
+    if (isPanning && imageContainerRef.current) {
+      const rect = imageContainerRef.current.getBoundingClientRect();
+      const maxX = Math.max(220, rect.width * zoomLevel * 0.55);
+      const maxY = Math.max(180, rect.height * zoomLevel * 0.55);
+      const nextX = Math.max(-maxX, Math.min(maxX, e.clientX - panStartRef.current.x));
+      const nextY = Math.max(-maxY, Math.min(maxY, e.clientY - panStartRef.current.y));
       setPanOffset({
-        x: e.clientX - panStartRef.current.x,
-        y: e.clientY - panStartRef.current.y,
+        x: nextX,
+        y: nextY,
       });
       return;
     }
@@ -622,11 +657,45 @@ export default function WindowsController({
               )}
             </div>
 
-            {/* Zoom & ROI Helpers */}
-            <div className="flex items-center gap-2">
+            {/* Zoom, Pan, Delete & ROI Helpers */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Mode Toggle: Select ROI vs Drag/Pan Image */}
               <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5">
                 <button
-                  onClick={() => setZoomLevel((z) => Math.max(0.5, z - 0.25))}
+                  onClick={() => setInteractionMode('select')}
+                  title="Modo Seleção: clique e arraste para desenhar o retângulo verde"
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                    interactionMode === 'select'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Crop className="w-3 h-3" />
+                  <span>Selecionar</span>
+                </button>
+                <button
+                  onClick={() => setInteractionMode('pan')}
+                  title="Modo Arrastar: clique e arraste a imagem ampliada para ver qualquer canto"
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                    interactionMode === 'pan'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Hand className="w-3 h-3" />
+                  <span>Arrastar</span>
+                </button>
+              </div>
+
+              <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5">
+                <button
+                  onClick={() =>
+                    setZoomLevel((z) => {
+                      const next = Math.max(0.5, z - 0.25);
+                      if (next <= 1) setPanOffset({ x: 0, y: 0 });
+                      return next;
+                    })
+                  }
                   className="p-1 text-slate-600 hover:text-slate-900"
                   title="Diminuir Zoom"
                 >
@@ -648,7 +717,7 @@ export default function WindowsController({
                     setPanOffset({ x: 0, y: 0 });
                   }}
                   className="p-1 text-slate-400 hover:text-slate-700 border-l border-slate-100"
-                  title="Resetar Zoom"
+                  title="Resetar Zoom e Centralizar"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
@@ -664,6 +733,16 @@ export default function WindowsController({
                   Limpar Recorte
                 </button>
               )}
+
+              <button
+                onClick={handleDeleteCurrentPhoto}
+                disabled={!currentPhoto}
+                title="Excluir foto atual"
+                aria-label="Excluir foto atual"
+                className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
@@ -673,7 +752,14 @@ export default function WindowsController({
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            className="relative w-full h-[540px] bg-slate-950 flex items-center justify-center overflow-hidden cursor-crosshair select-none"
+            onMouseLeave={handleMouseUp}
+            className={`relative w-full h-[540px] bg-slate-950 flex items-center justify-center overflow-hidden select-none ${
+              interactionMode === 'pan'
+                ? isPanning
+                  ? 'cursor-grabbing'
+                  : 'cursor-grab'
+                : 'cursor-crosshair'
+            }`}
           >
             {currentPhoto ? (
               <div
@@ -720,7 +806,11 @@ export default function WindowsController({
             {/* Instruction tooltip overlay */}
             <div className="absolute bottom-3 left-3 bg-slate-900/85 backdrop-blur-xs text-slate-300 text-[11px] px-3 py-1.5 rounded-md pointer-events-none border border-slate-700/50 flex items-center gap-2">
               <Info className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Clique e arraste para delimitar um texto específico da tela · Segure Shift para arrastar</span>
+              <span>
+                {interactionMode === 'pan'
+                  ? 'Arraste a imagem para visualizar qualquer canto · Clique em "Selecionar" para recortar'
+                  : 'Clique e arraste para delimitar um texto · Use "Arrastar" (ou Shift+arraste) para mover com zoom'}
+              </span>
             </div>
           </div>
         </div>
@@ -741,26 +831,44 @@ export default function WindowsController({
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {/* Preprocessing Toggles */}
-              <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useAntiMoire}
-                  onChange={(e) => setUseAntiMoire(e.target.checked)}
-                  className="rounded text-emerald-600 focus:ring-emerald-500"
-                />
-                <span>Filtro Anti-Moiré</span>
-              </label>
+              {/* Preprocessing Toggles with Hover Help Text */}
+              <div className="relative group flex items-center">
+                <label
+                  title="Suaviza listras e quadriculados de telas LCD. Deixe marcado na maioria das fotos; desmarque apenas se a foto estiver bem nítida e com fonte muito pequena."
+                  className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={useAntiMoire}
+                    onChange={(e) => setUseAntiMoire(e.target.checked)}
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Filtro Anti-Moiré</span>
+                  <Info className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600" />
+                </label>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2.5 rounded-lg bg-slate-900 text-slate-100 text-[11px] leading-relaxed shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 pointer-events-none z-30">
+                  Suaviza listras e quadriculados típicos de fotos de tela LCD. Deixe marcado na maioria das fotos; desmarque se a foto já estiver bem nítida e com fonte muito pequena.
+                </div>
+              </div>
 
-              <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useOtsu}
-                  onChange={(e) => setUseOtsu(e.target.checked)}
-                  className="rounded text-emerald-600 focus:ring-emerald-500"
-                />
-                <span>Binarização Otsu</span>
-              </label>
+              <div className="relative group flex items-center">
+                <label
+                  title="Converte para preto e branco puros. Deixe desmarcado na maioria dos casos (preserva letras finas e coloridas); marque se o fundo estiver manchado."
+                  className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={useOtsu}
+                    onChange={(e) => setUseOtsu(e.target.checked)}
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Binarização Otsu</span>
+                  <Info className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600" />
+                </label>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2.5 rounded-lg bg-slate-900 text-slate-100 text-[11px] leading-relaxed shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 pointer-events-none z-30">
+                  Converte tudo para preto e branco puros. Deixe desmarcado na maioria dos casos (preserva letras finas e coloridas); marque apenas se o fundo estiver manchado ou acinzentado.
+                </div>
+              </div>
 
               {/* "Ler texto" Action Button */}
               <button
