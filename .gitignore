@@ -15,3 +15,5 @@ main
 Leiame.txt.lnk
 *.crt
 *.key
+server/package-lock.json
+storage/
