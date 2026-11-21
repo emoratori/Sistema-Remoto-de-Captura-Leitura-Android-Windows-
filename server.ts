@@ -1,5 +1,6 @@
 import express from 'express';
-import { createServer } from 'node:http';
+import { createServer as createHttpServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -11,10 +12,43 @@ if (!fs.existsSync(STORAGE_DIR)) {
   fs.mkdirSync(STORAGE_DIR, { recursive: true });
 }
 
+function resolveSslPaths(): { keyPath: string; certPath: string } | null {
+  const candidates = [
+    process.env.SSL_KEY_PATH && process.env.SSL_CERT_PATH
+      ? { keyPath: path.resolve(process.env.SSL_KEY_PATH), certPath: path.resolve(process.env.SSL_CERT_PATH) }
+      : null,
+    {
+      keyPath: path.resolve(process.cwd(), 'cert.key'),
+      certPath: path.resolve(process.cwd(), 'cert.crt'),
+    },
+    {
+      keyPath: path.resolve(process.cwd(), 'server', 'cert.key'),
+      certPath: path.resolve(process.cwd(), 'server', 'cert.crt'),
+    },
+  ].filter(Boolean) as Array<{ keyPath: string; certPath: string }>;
+
+  for (const pair of candidates) {
+    if (fs.existsSync(pair.keyPath) && fs.existsSync(pair.certPath)) {
+      return pair;
+    }
+  }
+  return null;
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
-  const httpServer = createServer(app);
+  const sslPaths = process.env.DISABLE_HTTPS === 'true' ? null : resolveSslPaths();
+  const isHttps = Boolean(sslPaths);
+  const httpServer = sslPaths
+    ? createHttpsServer(
+        {
+          key: fs.readFileSync(sslPaths.keyPath),
+          cert: fs.readFileSync(sslPaths.certPath),
+        },
+        app
+      )
+    : createHttpServer(app);
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -232,7 +266,10 @@ async function startServer() {
   // Mount Vite middlewares in development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -244,12 +281,16 @@ async function startServer() {
     });
   }
 
+  const proto = isHttps ? 'https' : 'http';
   httpServer.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`====================================================`);
-    console.log(` Servidor Local Android-Windows Rodando na Porta ${PORT}`);
-    console.log(` Console Windows: http://localhost:${PORT}`);
-    console.log(` Acesso Android:  http://192.168.15.101:${PORT}/#android`);
+    console.log(` Servidor Local Android-Windows [${proto.toUpperCase()}] Porta ${PORT}`);
+    console.log(` Console Windows: ${proto}://localhost:${PORT}`);
+    console.log(` Acesso Android:  ${proto}://192.168.15.101:${PORT}/#android`);
     console.log(` Pasta de Fotos:  ${STORAGE_DIR}`);
+    if (!isHttps) {
+      console.log(` Dica HTTPS local: coloque cert.key e cert.crt na raiz ou em server/`);
+    }
     console.log(`====================================================`);
   });
 }

@@ -95,6 +95,12 @@ export default function AndroidView({ serverIp }: AndroidViewProps) {
         audio: false,
       };
 
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error(
+          'Câmera bloqueada pelo navegador: abra esta página usando HTTPS (ex: https://.../#android)'
+        );
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
