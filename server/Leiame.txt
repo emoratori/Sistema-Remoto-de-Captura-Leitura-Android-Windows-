@@ -1,0 +1,5 @@
+No PowerShell entre no diretório:
+cd C:\Users\Casa\Projetos\Sistema-Remoto-de-Captura-Leitura-Android-Windows-\server\
+
+Inicie o servidor:
+npm run start
