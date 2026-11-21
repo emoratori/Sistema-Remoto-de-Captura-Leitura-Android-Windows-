@@ -29,6 +29,7 @@ import QRCode from 'qrcode';
 import { CapturedPhoto, SelectionRect, CameraCapabilities } from '../types';
 import { localBus, getSavedPhotos, savePhoto } from '../services/localBus';
 import { runEnglishOcr, OcrResult } from '../services/tesseractOcr';
+import { cropImageToCanvas } from '../services/imageProcessing';
 import { generateSyntheticLaptopCapture } from '../data/samplePhotos';
 
 interface WindowsControllerProps {
@@ -82,12 +83,16 @@ export default function WindowsController({
   const [isSelecting, setIsSelecting] = useState<boolean>(false);
   const selectStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   // OCR state
   const [ocrRunning, setOcrRunning] = useState<boolean>(false);
   const [ocrProgress, setOcrProgress] = useState<{ percent: number; status: string }>({ percent: 0, status: '' });
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [copyingImage, setCopyingImage] = useState<boolean>(false);
+  const [copiedImage, setCopiedImage] = useState<boolean>(false);
+  const [copyImageError, setCopyImageError] = useState<string | null>(null);
   const [useAntiMoire, setUseAntiMoire] = useState<boolean>(true);
   const [useOtsu, setUseOtsu] = useState<boolean>(true);
 
@@ -311,6 +316,96 @@ export default function WindowsController({
     navigator.clipboard.writeText(ocrResult.text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const hasValidSelection = Boolean(selection && selection.width > 0 && selection.height > 0);
+
+  const handleCopySelectionToClipboard = async () => {
+    if (!currentPhoto || !selection || selection.width <= 0 || selection.height <= 0) return;
+
+    setCopyingImage(true);
+    setCopyImageError(null);
+
+    try {
+      let cropNorm = selection;
+
+      if (imageContainerRef.current && imgRef.current) {
+        const containerRect = imageContainerRef.current.getBoundingClientRect();
+        const imgRect = imgRef.current.getBoundingClientRect();
+        const natW = imgRef.current.naturalWidth;
+        const natH = imgRef.current.naturalHeight;
+
+        if (
+          containerRect.width > 0 &&
+          containerRect.height > 0 &&
+          imgRect.width > 0 &&
+          imgRect.height > 0 &&
+          natW > 0 &&
+          natH > 0
+        ) {
+          const natRatio = natW / natH;
+          const rectRatio = imgRect.width / imgRect.height;
+
+          let renW = imgRect.width;
+          let renH = imgRect.height;
+          let renLeft = imgRect.left;
+          let renTop = imgRect.top;
+
+          if (rectRatio > natRatio) {
+            renW = imgRect.height * natRatio;
+            renLeft = imgRect.left + (imgRect.width - renW) / 2;
+          } else {
+            renH = imgRect.width / natRatio;
+            renTop = imgRect.top + (imgRect.height - renH) / 2;
+          }
+
+          const selLeft = containerRect.left + selection.x * containerRect.width;
+          const selTop = containerRect.top + selection.y * containerRect.height;
+          const selRight = selLeft + selection.width * containerRect.width;
+          const selBottom = selTop + selection.height * containerRect.height;
+
+          const x1 = Math.max(0, Math.min(1, (selLeft - renLeft) / renW));
+          const y1 = Math.max(0, Math.min(1, (selTop - renTop) / renH));
+          const x2 = Math.max(0, Math.min(1, (selRight - renLeft) / renW));
+          const y2 = Math.max(0, Math.min(1, (selBottom - renTop) / renH));
+
+          const w = x2 - x1;
+          const h = y2 - y1;
+
+          if (w <= 0 || h <= 0) {
+            throw new Error('A seleção está fora da área da imagem.');
+          }
+
+          cropNorm = { x: x1, y: y1, width: w, height: h };
+        }
+      }
+
+      const croppedCanvas = await cropImageToCanvas(currentPhoto.url, cropNorm);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        croppedCanvas.toBlob(resolve, 'image/png')
+      );
+
+      if (!blob) {
+        throw new Error('Falha ao gerar a imagem da seleção.');
+      }
+
+      if (!navigator.clipboard || typeof ClipboardItem === 'undefined' || !navigator.clipboard.write) {
+        throw new Error('Cópia de imagem para a área de transferência não suportada neste navegador.');
+      }
+
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob }),
+      ]);
+
+      setCopiedImage(true);
+      setTimeout(() => setCopiedImage(false), 2500);
+    } catch (err) {
+      console.error('Copy selection error:', err);
+      setCopyImageError((err as Error).message || 'Não foi possível copiar a seleção.');
+      setTimeout(() => setCopyImageError(null), 4000);
+    } finally {
+      setCopyingImage(false);
+    }
   };
 
   return (
@@ -574,6 +669,7 @@ export default function WindowsController({
                 className="relative max-w-full max-h-full flex items-center justify-center pointer-events-none"
               >
                 <img
+                  ref={imgRef}
                   src={currentPhoto.url}
                   alt="Laptop Screen Capture"
                   className="max-h-[500px] w-auto object-contain rounded shadow-2xl pointer-events-none"
@@ -628,7 +724,7 @@ export default function WindowsController({
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {/* Preprocessing Toggles */}
               <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
                 <input
@@ -663,8 +759,40 @@ export default function WindowsController({
                 <Sparkles className={`w-3.5 h-3.5 ${ocrRunning ? 'animate-spin' : 'text-emerald-400'}`} />
                 {ocrRunning ? 'Processando Tesseract...' : 'Ler texto'}
               </button>
+
+              {/* Copy Selected Region Image to Clipboard Button */}
+              <button
+                onClick={handleCopySelectionToClipboard}
+                disabled={copyingImage || !currentPhoto || !hasValidSelection}
+                title={
+                  hasValidSelection
+                    ? 'Copiar apenas a área do retângulo verde para a área de transferência'
+                    : 'Desenhe um retângulo verde na imagem para copiar a seleção'
+                }
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all ${
+                  copyingImage || !currentPhoto || !hasValidSelection
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : copiedImage
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+              >
+                {copiedImage ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+                {copyingImage ? 'Copiando...' : copiedImage ? 'Seleção copiada!' : 'Copiar seleção'}
+              </button>
             </div>
           </div>
+
+          {copyImageError && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+              <span>{copyImageError}</span>
+            </div>
+          )}
 
           {/* OCR Progress Bar */}
           {ocrRunning && (
