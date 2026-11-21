@@ -10,4 +10,8 @@ coverage/
 server/node_modules/
 server/Storage/
 server/cert.key
-server/cert.crt
+server/cert.crt*.lnk
+main
+Leiame.txt.lnk
+*.crt
+*.key
